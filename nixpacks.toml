@@ -1,12 +1,8 @@
-[phases.build]
-cmds = ["npm install --production"]
+[phases.setup]
+nixPkgs = ["nodejs"]
 
-[phases.start]
-cmds = ["npm start"]
+[phases.build]
+cmds = ["npm install"]
 
 [start]
 cmd = "node server.js"
-
-[variables]
-PORT = "3000"
-NODE_ENV = "production"
