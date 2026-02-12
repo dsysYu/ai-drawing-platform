@@ -1,0 +1,2506 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI绘图任务管理平台</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        body.paste-lock {
+            cursor: cell !important;
+        }
+
+        body.paste-lock::after {
+            content: '📋 请按 Ctrl+V 粘贴图片';
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(102, 126, 234, 0.95);
+            color: white;
+            padding: 20px 40px;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: 600;
+            z-index: 9999;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+            to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-left h1 {
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+
+        .header-left p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .header-right {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .api-status {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 8px 16px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+
+        .api-status.connected {
+            background: rgba(40, 167, 69, 0.3);
+        }
+
+        .api-status.disconnected {
+            background: rgba(220, 53, 69, 0.3);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #28a745;
+        }
+
+        .api-status.disconnected .status-dot {
+            background: #dc3545;
+        }
+
+        .settings-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 14px;
+        }
+
+        .settings-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 20px;
+            padding: 32px;
+            justify-content: center;
+            background: #f8f9fa;
+            border-bottom: 2px solid #e9ecef;
+        }
+
+        .action-btn {
+            flex: 1;
+            max-width: 400px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 24px 32px;
+            border: none;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.3s, box-shadow 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+        }
+
+        .action-btn:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 28px rgba(102, 126, 234, 0.5);
+        }
+
+        .action-btn:active {
+            transform: translateY(-2px);
+        }
+
+        .action-btn.secondary {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        .action-btn.secondary:hover {
+            box-shadow: 0 12px 28px rgba(245, 87, 108, 0.5);
+        }
+
+        .task-list-section {
+            padding: 24px;
+        }
+
+        .task-list-header {
+            margin-bottom: 16px;
+        }
+
+        .search-box {
+            margin-bottom: 16px;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .search-box input:focus {
+            border-color: #667eea;
+            outline: none;
+        }
+
+        .stats-bar {
+            display: flex;
+            gap: 16px;
+            padding: 16px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            flex-wrap: wrap;
+        }
+
+        .task-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .task-row {
+            display: grid;
+            grid-template-columns: 120px 80px 140px 1fr 100px 80px 100px;
+            gap: 12px;
+            align-items: center;
+            background: #f8f9fa;
+            padding: 12px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+        }
+
+        .task-row:hover {
+            background: #e9ecef;
+            border-color: #667eea;
+            transform: translateX(4px);
+        }
+
+        .task-row-header {
+            display: grid;
+            grid-template-columns: 120px 80px 140px 1fr 100px 80px 100px;
+            gap: 12px;
+            align-items: center;
+            padding: 12px 16px;
+            background: #667eea;
+            color: white;
+            font-weight: 600;
+            border-radius: 8px;
+            font-size: 13px;
+        }
+
+        .task-id {
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .task-status {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-align: center;
+        }
+
+        .task-status.pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .task-status.completed {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .task-status.failed {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .task-model {
+            color: #666;
+            font-size: 13px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .task-prompt-preview {
+            color: #333;
+            font-size: 13px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .task-time {
+            color: #999;
+            font-size: 12px;
+        }
+
+        .task-action {
+            color: #667eea;
+            font-size: 13px;
+            text-align: center;
+            font-weight: 500;
+        }
+
+        .image-preview {
+            width: 60px;
+            height: 60px;
+            background: #e9ecef;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s;
+            background-size: cover;
+            background-position: center;
+            border: 2px solid transparent;
+        }
+
+        .image-preview:hover {
+            transform: scale(1.1);
+            border-color: #667eea;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+
+        .image-preview-placeholder {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #999;
+            font-size: 24px;
+        }
+
+        .result-preview-container {
+            display: flex;
+            gap: 4px;
+        }
+
+        .result-preview-mini {
+            width: 30px;
+            height: 30px;
+            border-radius: 4px;
+            background-size: cover;
+            background-position: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+        }
+
+        .result-preview-mini:hover {
+            transform: scale(1.15);
+            border-color: #667eea;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+
+        .empty-state-icon {
+            font-size: 64px;
+            margin-bottom: 16px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 16px;
+            max-width: 800px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            animation: modalIn 0.3s ease;
+        }
+
+        @keyframes modalIn {
+            from {
+                opacity: 0;
+                transform: scale(0.9);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 16px 16px 0 0;
+            color: white;
+        }
+
+        .modal-header h2 {
+            font-size: 20px;
+        }
+
+        .close-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            font-size: 24px;
+            cursor: pointer;
+            color: white;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .close-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: rotate(90deg);
+        }
+
+        .modal-body {
+            padding: 24px;
+        }
+
+        /* 大图预览样式 */
+        .image-preview-modal {
+            max-width: 90vw;
+            max-height: 90vh;
+        }
+
+        .image-preview-modal .modal-content {
+            background: transparent;
+            box-shadow: none;
+            max-width: 90vw;
+            max-height: 90vh;
+        }
+
+        .image-preview-modal .modal-header {
+            background: rgba(0, 0, 0, 0.8);
+        }
+
+        .image-preview-modal .modal-body {
+            padding: 0;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .image-preview-modal img {
+            max-width: 100%;
+            max-height: 80vh;
+            object-fit: contain;
+            border-radius: 8px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .form-group select,
+        .form-group textarea,
+        .form-group input[type="text"],
+        .form-group input[type="password"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group select:focus,
+        .form-group textarea:focus,
+        .form-group input:focus {
+            border-color: #667eea;
+            outline: none;
+        }
+
+        .form-group textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 14px 32px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            width: 100%;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+        }
+
+        .btn-secondary:hover {
+            box-shadow: 0 8px 20px rgba(108, 117, 125, 0.4);
+        }
+
+        .btn-danger {
+            background: #dc3545;
+        }
+
+        .btn-danger:hover {
+            box-shadow: 0 8px 20px rgba(220, 53, 69, 0.4);
+        }
+
+        .btn-success {
+            background: #28a745;
+        }
+
+        .btn-success:hover {
+            box-shadow: 0 8px 20px rgba(40, 167, 69, 0.4);
+        }
+
+        .model-info {
+            background: #f8f9fa;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #667eea;
+        }
+
+        .model-info h3 {
+            color: #667eea;
+            margin-bottom: 8px;
+            font-size: 16px;
+        }
+
+        .model-info p {
+            color: #666;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            margin-bottom: 16px;
+        }
+
+        .file-input-wrapper input[type="file"] {
+            display: none;
+        }
+
+        .paste-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-left: 12px;
+        }
+
+        .paste-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+        }
+
+        .paste-btn:active {
+            transform: translateY(0);
+        }
+
+        .file-input-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .file-input-header label {
+            margin: 0;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .file-input-label {
+            display: block;
+            padding: 20px;
+            border: 2px dashed #667eea;
+            border-radius: 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            color: #667eea;
+            font-weight: 500;
+            position: relative;
+        }
+
+        .file-input-label:hover {
+            background: #f8f9fa;
+        }
+
+        .file-input-label.dragover {
+            background: #e9ecef;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .file-preview {
+            margin-top: 12px;
+            display: none;
+        }
+
+        .file-preview.active {
+            display: block;
+        }
+
+        .file-preview img {
+            max-width: 100%;
+            max-height: 300px;
+            border-radius: 8px;
+        }
+
+        .result-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 16px;
+        }
+
+        .result-item {
+            position: relative;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #f8f9fa;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .result-item:hover {
+            transform: scale(1.02);
+        }
+
+        .result-item.selected {
+            ring: 4px solid #667eea;
+            box-shadow: 0 0 0 4px #667eea;
+        }
+
+        .result-image {
+            width: 100%;
+            height: 200px;
+            background: #e9ecef;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #999;
+            font-size: 48px;
+            position: relative;
+            background-size: cover;
+            background-position: center;
+            cursor: pointer;
+        }
+
+        .result-image.has-image {
+            cursor: pointer;
+        }
+
+        .result-image:hover::after {
+            content: '🔍';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 48px;
+            color: white;
+            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+        }
+
+        .result-item.selected .check-mark {
+            opacity: 1;
+        }
+
+        .check-mark {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 28px;
+            height: 28px;
+            background: #667eea;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 18px;
+            z-index: 10;
+        }
+
+        .result-prompt {
+            padding: 12px;
+            font-size: 13px;
+            color: #666;
+            background: white;
+            border-top: 1px solid #e9ecef;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .stat-label {
+            color: #666;
+            font-size: 13px;
+        }
+
+        .stat-value {
+            color: #667eea;
+            font-weight: 600;
+            font-size: 16px;
+        }
+
+        .edit-area {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 12px;
+            margin-top: 16px;
+        }
+
+        .edit-area h4 {
+            color: #667eea;
+            margin-bottom: 16px;
+            font-size: 16px;
+        }
+
+        .edit-buttons {
+            display: flex;
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .edit-buttons button {
+            flex: 1;
+        }
+
+        .detail-section {
+            margin-bottom: 24px;
+        }
+
+        .detail-section h3 {
+            font-size: 16px;
+            color: #333;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #e9ecef;
+        }
+
+        .detail-info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .detail-info-item {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 8px;
+        }
+
+        .detail-info-label {
+            color: #666;
+            font-size: 12px;
+            margin-bottom: 4px;
+        }
+
+        .detail-info-value {
+            color: #333;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .detail-image-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-top: 12px;
+        }
+
+        .detail-image-item {
+            position: relative;
+        }
+
+        .detail-image-item img {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .detail-image-item img:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .detail-image-label {
+            text-align: center;
+            color: #666;
+            font-size: 13px;
+            margin-top: 8px;
+        }
+
+        .no-results {
+            text-align: center;
+            padding: 40px 20px;
+            color: #999;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        /* API设置页面样式 */
+        .api-settings-page {
+            padding: 20px;
+        }
+
+        .api-tabs {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e9ecef;
+        }
+
+        .api-tab {
+            padding: 12px 24px;
+            background: none;
+            border: none;
+            font-size: 14px;
+            font-weight: 600;
+            color: #666;
+            cursor: pointer;
+            position: relative;
+            transition: all 0.3s;
+        }
+
+        .api-tab.active {
+            color: #667eea;
+        }
+
+        .api-tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: #667eea;
+        }
+
+        .api-tab:hover {
+            color: #667eea;
+        }
+
+        .api-account-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .api-account-item {
+            background: #f8f9fa;
+            padding: 16px;
+            border-radius: 8px;
+            border: 2px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .api-account-item:hover {
+            border-color: #667eea;
+        }
+
+        .api-account-item.default-account {
+            border-color: #28a745;
+            background: rgba(40, 167, 69, 0.05);
+        }
+
+        .api-account-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .api-account-name {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .api-account-status {
+            display: flex;
+            gap: 8px;
+        }
+
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .status-badge.connected {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-badge.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-badge.default {
+            background: #cce5ff;
+            color: #004085;
+        }
+
+        .api-account-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .api-account-actions button {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        .api-account-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+            padding: 12px;
+            background: white;
+            border-radius: 6px;
+        }
+
+        .api-detail-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .api-detail-label {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .api-detail-value {
+            font-size: 13px;
+            color: #333;
+            font-weight: 500;
+        }
+
+        .api-form {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .api-form h3 {
+            color: #667eea;
+            margin-bottom: 16px;
+            font-size: 16px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .checkbox-group label {
+            margin: 0;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .api-usage-stats {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .usage-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 16px;
+            margin-top: 16px;
+        }
+
+        .usage-stat-item {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 16px;
+            border-radius: 8px;
+        }
+
+        .usage-stat-label {
+            font-size: 12px;
+            opacity: 0.8;
+            margin-bottom: 4px;
+        }
+
+        .usage-stat-value {
+            font-size: 24px;
+            font-weight: 700;
+        }
+
+        @media (max-width: 768px) {
+            .action-buttons {
+                flex-direction: column;
+                padding: 20px;
+            }
+
+            .action-btn {
+                max-width: 100%;
+            }
+
+            .task-row,
+            .task-row-header {
+                grid-template-columns: 80px 60px 100px 1fr 80px;
+                gap: 8px;
+            }
+
+            .task-row > *,
+            .task-row-header > * {
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-left">
+                <h1>🎨 AI绘图任务管理平台</h1>
+                <p>集成豆包、即梦等AI模型，专业绘图任务管理</p>
+            </div>
+            <div class="header-right">
+                <div class="api-status disconnected" id="apiStatus">
+                    <div class="status-dot"></div>
+                    <span id="apiStatusText">未配置API</span>
+                </div>
+                <button class="settings-btn" onclick="openApiSettings()">⚙️ API设置</button>
+                <button class="settings-btn" onclick="window.open('/admin.html', '_blank')">🔧 后台管理</button>
+            </div>
+        </div>
+
+        <div class="action-buttons">
+            <button class="action-btn" onclick="openGenerateModal('text')">
+                <span style="font-size: 24px;">📝</span>
+                文字生图
+            </button>
+            <button class="action-btn secondary" onclick="openGenerateModal('image')">
+                <span style="font-size: 24px;">🖼️</span>
+                参考图生图
+            </button>
+        </div>
+
+        <div class="task-list-section">
+            <div class="task-list-header">
+                <div class="search-box">
+                    <input type="text" id="searchInput" placeholder="🔍 搜索任务编号..." oninput="filterTasks()">
+                </div>
+                <div class="stats-bar">
+                    <div class="stat-item">
+                        <span class="stat-label">总任务：</span>
+                        <span class="stat-value" id="totalTasks">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">已完成：</span>
+                        <span class="stat-value" id="completedTasks">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">处理中：</span>
+                        <span class="stat-value" id="pendingTasks">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <div id="taskListContainer" class="task-list">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📋</div>
+                    <p>暂无任务，快去创建您的第一个绘图任务吧！</p>
+                    <p style="font-size: 13px; margin-top: 8px;">提示：请先在右上角配置API账号</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- API设置弹窗 -->
+    <div class="modal" id="apiSettingsModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>⚙️ API账号管理</h2>
+                <button class="close-btn" onclick="closeApiSettings()">&times;</button>
+            </div>
+            <div class="modal-body" id="apiSettingsBody">
+                <!-- 动态内容 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 生图弹窗 -->
+    <div class="modal" id="generateModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="generateModalTitle">生图</h2>
+                <button class="close-btn" onclick="closeGenerateModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="generateModalBody">
+                <!-- 动态内容 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 任务详情弹窗 -->
+    <div class="modal" id="taskDetailModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">任务详情</h2>
+                <button class="close-btn" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- 动态内容 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 大图预览弹窗 -->
+    <div class="modal image-preview-modal" id="imagePreviewModal">
+        <div class="modal-content" style="background: transparent; box-shadow: none;">
+            <div class="modal-header" style="background: rgba(0, 0, 0, 0.8);">
+                <h2 id="imagePreviewTitle">图片预览</h2>
+                <button class="close-btn" onclick="closeImagePreview()">&times;</button>
+            </div>
+            <div class="modal-body" style="background: rgba(0, 0, 0, 0.9);">
+                <img id="imagePreviewImg" src="" alt="图片预览">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // AI模型配置
+        const AI_MODELS = {
+            doubao: {
+                name: '豆包',
+                type: 'general',
+                provider: 'volcengine',
+                description: '字节跳动推出的通用AI绘图模型，支持多种风格',
+                apiUrl: 'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
+                modelName: 'ep-20241223111111-xxxxx' // 用户需要配置
+            },
+            jimeng_dream: {
+                name: '即梦-梦境',
+                type: 'creative',
+                provider: 'jimeng',
+                description: '专注于创意和梦境风格的图片生成',
+                apiUrl: 'https://api.jimeng.jianying.com/prompt/generate',
+                modelName: 'dream'
+            },
+            jimeng_realistic: {
+                name: '即梦-写实',
+                type: 'realistic',
+                provider: 'jimeng',
+                description: '擅长生成写实风格的高质量图片',
+                apiUrl: 'https://api.jimeng.jianying.com/prompt/generate',
+                modelName: 'realistic'
+            },
+            jimeng_anime: {
+                name: '即梦-动漫',
+                type: 'anime',
+                provider: 'jimeng',
+                description: '专业的动漫风格图片生成模型',
+                apiUrl: 'https://api.jimeng.jianying.com/prompt/generate',
+                modelName: 'anime'
+            },
+            jimeng_style: {
+                name: '即梦-风格迁移',
+                type: 'style',
+                provider: 'jimeng',
+                description: '基于参考图进行风格迁移',
+                apiUrl: 'https://api.jimeng.jianying.com/style_transfer',
+                modelName: 'style_transfer'
+            },
+            jimeng_enhance: {
+                name: '即梦-画质增强',
+                type: 'enhance',
+                provider: 'jimeng',
+                description: '提升参考图的画质和细节',
+                apiUrl: 'https://api.jimeng.jianying.com/enhance',
+                modelName: 'enhance'
+            }
+        };
+
+        // 任务存储
+        let tasks = [];
+        let currentTaskId = 0;
+        let referenceImageData = null;
+        let baseImageData = null;
+        let textImageData = null;
+        let filteredTasks = [];
+        let currentPasteArea = null;
+
+        // API账号存储
+        let apiAccounts = [];
+
+        // API基础URL
+        const API_BASE_URL = window.location.origin + '/api';
+
+        // 加载数据
+        async function loadData() {
+            try {
+                // 从后端API加载任务
+                const tasksResponse = await fetch(`${API_BASE_URL}/tasks`);
+                const tasksData = await tasksResponse.json();
+                if (tasksData.success) {
+                    tasks = tasksData.tasks;
+                    currentTaskId = tasks.length;
+                }
+
+                // 从后端API加载账号
+                const accountsResponse = await fetch(`${API_BASE_URL}/accounts`);
+                const accountsData = await accountsResponse.json();
+                if (accountsData.success) {
+                    apiAccounts = accountsData.accounts;
+                }
+            } catch (e) {
+                console.error('加载数据失败:', e);
+                // 如果API不可用，尝试从localStorage加载
+                const savedTasks = localStorage.getItem('aiDrawTasks');
+                if (savedTasks) {
+                    tasks = JSON.parse(savedTasks);
+                    currentTaskId = tasks.length;
+                }
+
+                const savedAccounts = localStorage.getItem('apiAccounts');
+                if (savedAccounts) {
+                    apiAccounts = JSON.parse(savedAccounts);
+                }
+            }
+        }
+
+        // 生成任务ID
+        function generateTaskId() {
+            return `TASK-${String(++currentTaskId).padStart(6, '0')}`;
+        }
+
+        // 获取当前时间
+        function getCurrentTime() {
+            const now = new Date();
+            return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        }
+
+        // 更新API状态显示
+        function updateApiStatus() {
+            const status = document.getElementById('apiStatus');
+            const statusText = document.getElementById('apiStatusText');
+
+            const defaultAccount = apiAccounts.find(acc => acc.isDefault);
+            if (defaultAccount) {
+                status.classList.remove('disconnected');
+                status.classList.add('connected');
+                statusText.textContent = `已连接: ${defaultAccount.name}`;
+            } else {
+                status.classList.remove('connected');
+                status.classList.add('disconnected');
+                statusText.textContent = '未配置API';
+            }
+        }
+
+        // 打开API设置弹窗
+        function openApiSettings() {
+            const modal = document.getElementById('apiSettingsModal');
+            const body = document.getElementById('apiSettingsBody');
+            
+            body.innerHTML = getApiSettingsContent();
+            modal.classList.add('active');
+        }
+
+        // 关闭API设置弹窗
+        function closeApiSettings() {
+            document.getElementById('apiSettingsModal').classList.remove('active');
+        }
+
+        // 获取API设置内容
+        function getApiSettingsContent() {
+            return `
+                <div class="api-tabs">
+                    <button class="api-tab active" onclick="switchApiTab('accounts')">账号管理</button>
+                    <button class="api-tab" onclick="switchApiTab('add')">添加账号</button>
+                    <button class="api-tab" onclick="switchApiTab('stats')">使用统计</button>
+                </div>
+
+                <div id="apiAccountsPanel">
+                    <div class="api-account-list">
+                        ${apiAccounts.length === 0 ? `
+                            <div class="empty-state" style="padding: 40px;">
+                                <div class="empty-state-icon">🔑</div>
+                                <p>暂无API账号，请添加账号后开始使用</p>
+                            </div>
+                        ` : apiAccounts.map(account => `
+                            <div class="api-account-item ${account.isDefault ? 'default-account' : ''}">
+                                <div class="api-account-header">
+                                    <div class="api-account-name">
+                                        ${account.name}
+                                        ${account.isDefault ? '<span class="status-badge default">默认</span>' : ''}
+                                    </div>
+                                    <div class="api-account-status">
+                                        <span class="status-badge connected">已配置</span>
+                                    </div>
+                                </div>
+                                <div class="api-account-details">
+                                    <div class="api-detail-item">
+                                        <span class="api-detail-label">服务提供商</span>
+                                        <span class="api-detail-value">${account.provider}</span>
+                                    </div>
+                                    <div class="api-detail-item">
+                                        <span class="api-detail-label">API密钥</span>
+                                        <span class="api-detail-value">${maskApiKey(account.apiKey)}</span>
+                                    </div>
+                                    <div class="api-detail-item">
+                                        <span class="api-detail-label">使用次数</span>
+                                        <span class="api-detail-value">${account.usageCount || 0}</span>
+                                    </div>
+                                </div>
+                                <div class="api-account-actions" style="margin-top: 12px;">
+                                    <button class="btn btn-secondary" onclick="editAccount('${account.id}')">编辑</button>
+                                    ${!account.isDefault ? `<button class="btn btn-success" onclick="setDefaultAccount('${account.id}')">设为默认</button>` : ''}
+                                    <button class="btn btn-danger" onclick="deleteAccount('${account.id}')">删除</button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <div id="apiAddPanel" style="display: none;">
+                    <div class="api-form">
+                        <h3>🔑 添加API账号</h3>
+                        <div class="form-group">
+                            <label>账号名称</label>
+                            <input type="text" id="accountName" placeholder="例如：主账号、测试账号">
+                        </div>
+                        <div class="form-group">
+                            <label>服务提供商</label>
+                            <select id="accountProvider">
+                                <option value="volcengine">火山引擎（豆包）</option>
+                                <option value="jimeng">即梦（剪映）</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>API密钥</label>
+                            <input type="password" id="accountApiKey" placeholder="输入您的API密钥">
+                        </div>
+                        <div class="form-group">
+                            <label>API Endpoint（选填）</label>
+                            <input type="text" id="accountEndpoint" placeholder="https://api.example.com/v1">
+                        </div>
+                        <div class="form-group">
+                            <label>模型ID（选填）</label>
+                            <input type="text" id="accountModelId" placeholder="例如：ep-20241223111111-xxxxx">
+                        </div>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="isDefaultAccount">
+                            <label for="isDefaultAccount">设为默认账号</label>
+                        </div>
+                        <div style="margin-top: 20px;">
+                            <button class="btn" onclick="saveAccount()">保存账号</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="apiStatsPanel" style="display: none;">
+                    <div class="api-usage-stats">
+                        <h3>📊 API使用统计</h3>
+                        <div class="usage-stats-grid">
+                            <div class="usage-stat-item">
+                                <div class="usage-stat-label">总调用次数</div>
+                                <div class="usage-stat-value">${apiAccounts.reduce((sum, acc) => sum + (acc.usageCount || 0), 0)}</div>
+                            </div>
+                            <div class="usage-stat-item">
+                                <div class="usage-stat-label">成功次数</div>
+                                <div class="usage-stat-value">${apiAccounts.reduce((sum, acc) => sum + (acc.successCount || 0), 0)}</div>
+                            </div>
+                            <div class="usage-stat-item">
+                                <div class="usage-stat-label">失败次数</div>
+                                <div class="usage-stat-value">${apiAccounts.reduce((sum, acc) => sum + (acc.failureCount || 0), 0)}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // 切换API标签页
+        function switchApiTab(tab) {
+            // 更新标签样式
+            document.querySelectorAll('.api-tab').forEach(el => el.classList.remove('active'));
+            event.target.classList.add('active');
+
+            // 显示对应面板
+            document.getElementById('apiAccountsPanel').style.display = 'none';
+            document.getElementById('apiAddPanel').style.display = 'none';
+            document.getElementById('apiStatsPanel').style.display = 'none';
+
+            if (tab === 'accounts') {
+                document.getElementById('apiAccountsPanel').style.display = 'block';
+            } else if (tab === 'add') {
+                document.getElementById('apiAddPanel').style.display = 'block';
+            } else if (tab === 'stats') {
+                document.getElementById('apiStatsPanel').style.display = 'block';
+            }
+        }
+
+        // 遮蔽API密钥
+        function maskApiKey(key) {
+            if (!key || key.length <= 8) return '****';
+            return key.substring(0, 4) + '****' + key.substring(key.length - 4);
+        }
+
+        // 保存账号
+        function saveAccount() {
+            const name = document.getElementById('accountName').value.trim();
+            const provider = document.getElementById('accountProvider').value;
+            const apiKey = document.getElementById('accountApiKey').value.trim();
+            const endpoint = document.getElementById('accountEndpoint').value.trim();
+            const modelId = document.getElementById('accountModelId').value.trim();
+            const isDefault = document.getElementById('isDefaultAccount').checked;
+
+            if (!name || !apiKey) {
+                alert('请填写账号名称和API密钥');
+                return;
+            }
+
+            const account = {
+                id: 'acc_' + Date.now(),
+                name,
+                provider,
+                apiKey,
+                endpoint: endpoint || '',
+                modelId: modelId || '',
+                isDefault,
+                usageCount: 0,
+                successCount: 0,
+                failureCount: 0,
+                createdAt: getCurrentTime()
+            };
+
+            // 如果设为默认，取消其他账号的默认状态
+            if (isDefault) {
+                apiAccounts.forEach(acc => acc.isDefault = false);
+            }
+
+            apiAccounts.push(account);
+            saveData();
+
+            // 刷新界面
+            openApiSettings();
+            updateApiStatus();
+
+            alert('账号保存成功！');
+        }
+
+        // 编辑账号
+        function editAccount(accountId) {
+            const account = apiAccounts.find(acc => acc.id === accountId);
+            if (!account) return;
+
+            document.getElementById('accountName').value = account.name;
+            document.getElementById('accountProvider').value = account.provider;
+            document.getElementById('accountApiKey').value = account.apiKey;
+            document.getElementById('accountEndpoint').value = account.endpoint || '';
+            document.getElementById('accountModelId').value = account.modelId || '';
+            document.getElementById('isDefaultAccount').checked = account.isDefault;
+
+            // 切换到添加页面并修改标题
+            document.querySelectorAll('.api-tab').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.api-tab')[1].classList.add('active');
+            
+            document.getElementById('apiAccountsPanel').style.display = 'none';
+            document.getElementById('apiAddPanel').style.display = 'block';
+            document.getElementById('apiStatsPanel').style.display = 'none';
+
+            // 临时保存编辑的账号ID
+            window.editingAccountId = accountId;
+        }
+
+        // 设为默认账号
+        function setDefaultAccount(accountId) {
+            apiAccounts.forEach(acc => {
+                acc.isDefault = (acc.id === accountId);
+            });
+            saveData();
+            openApiSettings();
+            updateApiStatus();
+        }
+
+        // 删除账号
+        function deleteAccount(accountId) {
+            if (confirm('确定要删除此账号吗？')) {
+                apiAccounts = apiAccounts.filter(acc => acc.id !== accountId);
+                saveData();
+                openApiSettings();
+                updateApiStatus();
+            }
+        }
+
+        // 获取默认API账号
+        function getDefaultAccount() {
+            return apiAccounts.find(acc => acc.isDefault) || apiAccounts[0];
+        }
+
+        // API调用核心函数
+        async function callAI_API(modelType, prompt, referenceImage, baseImage, refStyleImage, count) {
+            const account = getDefaultAccount();
+            if (!account) {
+                throw new Error('请先配置API账号');
+            }
+
+            account.usageCount = (account.usageCount || 0) + 1;
+            saveData();
+
+            try {
+                let response;
+                
+                if (account.provider === 'volcengine') {
+                    response = await callVolcengineAPI(account, modelType, prompt, referenceImage, count);
+                } else if (account.provider === 'jimeng') {
+                    response = await callJimengAPI(account, modelType, prompt, baseImage, refStyleImage, count);
+                } else {
+                    throw new Error('不支持的服务提供商');
+                }
+
+                account.successCount = (account.successCount || 0) + 1;
+                saveData();
+
+                return response;
+            } catch (error) {
+                account.failureCount = (account.failureCount || 0) + 1;
+                saveData();
+                throw error;
+            }
+        }
+
+        // 调用火山引擎API（豆包）
+        async function callVolcengineAPI(account, modelType, prompt, referenceImage, count) {
+            const headers = {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${account.apiKey}`
+            };
+
+            const endpoint = account.endpoint || 'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
+            const modelId = account.modelId || 'ep-20241223111111-xxxxx';
+
+            const messages = [
+                {
+                    role: 'user',
+                    content: []
+                }
+            ];
+
+            // 添加文本提示
+            messages[0].content.push({
+                type: 'text',
+                text: prompt
+            });
+
+            // 添加参考图片
+            if (referenceImage) {
+                messages[0].content.push({
+                    type: 'image_url',
+                    image_url: {
+                        url: referenceImage
+                    }
+                });
+            }
+
+            const requestBody = {
+                model: modelId,
+                messages: messages,
+                stream: false
+            };
+
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify(requestBody)
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(`API调用失败: ${errorData.error?.message || response.statusText}`);
+            }
+
+            const data = await response.json();
+            
+            // 解析返回的图片
+            const images = [];
+            if (data.choices && data.choices[0]?.message?.content) {
+                // 假设返回的是base64图片数据
+                const content = data.choices[0].message.content;
+                if (typeof content === 'string' && content.startsWith('data:image')) {
+                    images.push(content);
+                }
+            }
+
+            return {
+                success: true,
+                images: images
+            };
+        }
+
+        // 调用即梦API
+        async function callJimengAPI(account, modelType, prompt, baseImage, refStyleImage, count) {
+            // 即梦API的具体实现
+            // 这里提供基本框架，需要根据实际API文档调整
+            const headers = {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${account.apiKey}`
+            };
+
+            const endpoint = account.endpoint || 'https://api.jimeng.jianying.com/prompt/generate';
+
+            const requestBody = {
+                prompt: prompt,
+                model_name: modelType,
+                count: count
+            };
+
+            // 添加图片参数
+            if (baseImage) {
+                requestBody.base_image = baseImage;
+            }
+            if (refStyleImage) {
+                requestBody.reference_image = refStyleImage;
+            }
+
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify(requestBody)
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(`即梦API调用失败: ${errorData.error?.message || response.statusText}`);
+            }
+
+            const data = await response.json();
+            
+            // 解析返回的图片
+            const images = data.images || [];
+
+            return {
+                success: true,
+                images: images
+            };
+        }
+
+        // 打开生图弹窗
+        function openGenerateModal(type) {
+            const account = getDefaultAccount();
+            if (!account) {
+                alert('请先配置API账号才能使用绘图功能');
+                openApiSettings();
+                return;
+            }
+
+            const modal = document.getElementById('generateModal');
+            const title = document.getElementById('generateModalTitle');
+            const body = document.getElementById('generateModalBody');
+
+            if (type === 'text') {
+                title.textContent = '📝 文字生图';
+                body.innerHTML = getTextToImageForm();
+            } else {
+                title.textContent = '🖼️ 参考图生图';
+                body.innerHTML = getImageToImageForm();
+            }
+
+            modal.classList.add('active');
+
+            // 初始化新弹窗的拖拽和粘贴功能
+            setTimeout(() => {
+                if (type === 'text') {
+                    setupDropZone(document.getElementById('textImageDropZone'), 'text');
+                } else {
+                    setupDropZone(document.getElementById('baseImageDropZone'), 'base');
+                    setupDropZone(document.getElementById('refImageDropZone'), 'ref');
+                }
+            }, 100);
+        }
+
+        // 关闭生图弹窗
+        function closeGenerateModal() {
+            document.getElementById('generateModal').classList.remove('active');
+            // 清理数据
+            textImageData = null;
+            baseImageData = null;
+            referenceImageData = null;
+            currentPasteArea = null;
+        }
+
+        // 获取文字生图表单
+        function getTextToImageForm() {
+            const account = getDefaultAccount();
+            const availableModels = Object.keys(AI_MODELS).filter(key => 
+                AI_MODELS[key].provider === account.provider || key.startsWith(account.provider)
+            );
+
+            return `
+                <div class="model-info">
+                    <h3>📝 文字生图模式</h3>
+                    <p>基于AI模型，配合文字描述和可选参考图片生成精美图片。当前使用: ${account.name}</p>
+                </div>
+
+                <div class="form-group">
+                    <label>选择AI模型</label>
+                    <select id="textModelSelect">
+                        ${availableModels.map(key => `
+                            <option value="${key}">${AI_MODELS[key].name} - ${AI_MODELS[key].description}</option>
+                        `).join('')}
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <div class="file-input-header">
+                        <label>上传基础图片（可选）</label>
+                        <button class="paste-btn" onclick="focusPasteArea('text')">📋 粘贴图片</button>
+                    </div>
+                    <div class="file-input-wrapper" id="textImageDropZone">
+                        <input type="file" id="textImageInput" accept="image/*" onchange="handleTextFileSelect(event)">
+                        <label for="textImageInput" class="file-input-label">
+                            📁 点击选择文件 / 拖拽图片到此处
+                        </label>
+                    </div>
+                    <div class="file-preview" id="textImagePreview">
+                        <img id="textPreviewImg" src="" alt="预览图">
+                        <button class="btn btn-secondary" style="margin-top: 8px; padding: 8px 16px; font-size: 14px;" onclick="clearTextImage()">清除图片</button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>话术描述</label>
+                    <textarea id="textPrompt" placeholder="请输入详细的画面描述，例如：一位穿着白色连衣裙的少女站在花海中，阳光温暖，画面唯美..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label>生成数量</label>
+                    <select id="textCount">
+                        <option value="1">1张</option>
+                        <option value="2">2张</option>
+                        <option value="4" selected>4张</option>
+                        <option value="8">8张</option>
+                    </select>
+                </div>
+
+                <button class="btn" onclick="generateFromText()">开始生成</button>
+            `;
+        }
+
+        // 获取参考图生图表单
+        function getImageToImageForm() {
+            const account = getDefaultAccount();
+            const availableModels = Object.keys(AI_MODELS).filter(key => 
+                AI_MODELS[key].provider === account.provider || key.startsWith(account.provider)
+            );
+
+            return `
+                <div class="model-info">
+                    <h3>🖼️ 参考图生图模式</h3>
+                    <p>上传基础图片和参考风格图，AI将根据参考图的场景样式，将基础图片转换为对应的风格效果。当前使用: ${account.name}</p>
+                </div>
+
+                <div class="form-group">
+                    <label>选择AI模型</label>
+                    <select id="imageModelSelect">
+                        ${availableModels.map(key => `
+                            <option value="${key}">${AI_MODELS[key].name} - ${AI_MODELS[key].description}</option>
+                        `).join('')}
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <div class="file-input-header">
+                        <label>上传基础图片</label>
+                        <button class="paste-btn" onclick="focusPasteArea('base')">📋 粘贴图片</button>
+                    </div>
+                    <div class="file-input-wrapper" id="baseImageDropZone">
+                        <input type="file" id="baseImageInput" accept="image/*" onchange="handleBaseFileSelect(event)">
+                        <label for="baseImageInput" class="file-input-label">
+                            📁 点击选择文件 / 拖拽图片到此处
+                        </label>
+                    </div>
+                    <div class="file-preview" id="baseImagePreview">
+                        <img id="basePreviewImg" src="" alt="预览图">
+                        <button class="btn btn-secondary" style="margin-top: 8px; padding: 8px 16px; font-size: 14px;" onclick="clearBaseImage()">清除图片</button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <div class="file-input-header">
+                        <label>上传参考风格图</label>
+                        <button class="paste-btn" onclick="focusPasteArea('ref')">📋 粘贴图片</button>
+                    </div>
+                    <div class="file-input-wrapper" id="refImageDropZone">
+                        <input type="file" id="refImageInput" accept="image/*" onchange="handleRefFileSelect(event)">
+                        <label for="refImageInput" class="file-input-label">
+                            📁 点击选择文件 / 拖拽图片到此处
+                        </label>
+                    </div>
+                    <div class="file-preview" id="refImagePreview">
+                        <img id="refPreviewImg" src="" alt="预览图">
+                        <button class="btn btn-secondary" style="margin-top: 8px; padding: 8px 16px; font-size: 14px;" onclick="clearRefImage()">清除图片</button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>补充描述（可选）</label>
+                    <textarea id="imagePrompt" placeholder="可以补充对生成画面的具体要求，如调整风格强度、添加元素等..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label>生成数量</label>
+                    <select id="imageCount">
+                        <option value="1">1张</option>
+                        <option value="2">2张</option>
+                        <option value="4" selected>4张</option>
+                    </select>
+                </div>
+
+                <button class="btn" onclick="generateFromImage()">开始生成</button>
+            `;
+        }
+
+        // 聚焦粘贴区域
+        function focusPasteArea(type) {
+            currentPasteArea = type;
+            document.body.classList.add('paste-lock');
+        }
+
+        // 设置拖拽区域
+        function setupDropZone(dropZone, type) {
+            if (!dropZone) return;
+
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dropZone.querySelector('.file-input-label').classList.add('dragover');
+            });
+
+            dropZone.addEventListener('dragleave', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dropZone.querySelector('.file-input-label').classList.remove('dragover');
+            });
+
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dropZone.querySelector('.file-input-label').classList.remove('dragover');
+
+                const files = e.dataTransfer.files;
+                if (files.length > 0 && files[0].type.startsWith('image/')) {
+                    handleImageFile(files[0], type);
+                    // 解除粘贴锁定
+                    document.body.classList.remove('paste-lock');
+                    currentPasteArea = null;
+                }
+            });
+        }
+
+        // 处理图片文件
+        function handleImageFile(file, type) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const imageData = e.target.result;
+
+                if (type === 'text') {
+                    textImageData = imageData;
+                    const preview = document.getElementById('textImagePreview');
+                    const img = document.getElementById('textPreviewImg');
+                    img.src = imageData;
+                    preview.classList.add('active');
+                } else if (type === 'base') {
+                    baseImageData = imageData;
+                    const preview = document.getElementById('baseImagePreview');
+                    const img = document.getElementById('basePreviewImg');
+                    img.src = imageData;
+                    preview.classList.add('active');
+                } else if (type === 'ref') {
+                    referenceImageData = imageData;
+                    const preview = document.getElementById('refImagePreview');
+                    const img = document.getElementById('refPreviewImg');
+                    img.src = imageData;
+                    preview.classList.add('active');
+                }
+
+                // 解除粘贴锁定
+                document.body.classList.remove('paste-lock');
+                currentPasteArea = null;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // 文字生图文件选择
+        function handleTextFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                handleImageFile(file, 'text');
+            }
+        }
+
+        // 基础图片文件选择
+        function handleBaseFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                handleImageFile(file, 'base');
+            }
+        }
+
+        // 参考图片文件选择
+        function handleRefFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                handleImageFile(file, 'ref');
+            }
+        }
+
+        // 清除文字生图图片
+        function clearTextImage() {
+            textImageData = null;
+            const preview = document.getElementById('textImagePreview');
+            const input = document.getElementById('textImageInput');
+            preview.classList.remove('active');
+            input.value = '';
+        }
+
+        // 清除基础图片
+        function clearBaseImage() {
+            baseImageData = null;
+            const preview = document.getElementById('baseImagePreview');
+            const input = document.getElementById('baseImageInput');
+            preview.classList.remove('active');
+            input.value = '';
+        }
+
+        // 清除参考图片
+        function clearRefImage() {
+            referenceImageData = null;
+            const preview = document.getElementById('refImagePreview');
+            const input = document.getElementById('refImageInput');
+            preview.classList.remove('active');
+            input.value = '';
+        }
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            loadData();
+            filteredTasks = tasks;
+            renderTaskList();
+            updateApiStatus();
+
+            // 全局粘贴事件监听
+            document.addEventListener('paste', handlePaste);
+
+            // 点击任意区域解除粘贴锁定
+            document.addEventListener('click', (e) => {
+                // 如果点击的不是粘贴按钮，则解除锁定
+                if (!e.target.classList.contains('paste-btn') && currentPasteArea) {
+                    document.body.classList.remove('paste-lock');
+                    currentPasteArea = null;
+                }
+            });
+        });
+
+        // 处理粘贴事件
+        function handlePaste(e) {
+            const items = e.clipboardData.items;
+
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type.indexOf('image') !== -1) {
+                    const blob = items[i].getAsFile();
+
+                    // 使用当前聚焦的粘贴区域，如果没有则使用默认逻辑
+                    let type = currentPasteArea;
+                    if (!type) {
+                        // 检查哪个弹窗是打开的
+                        const generateModal = document.getElementById('generateModal');
+                        if (generateModal.classList.contains('active')) {
+                            // 生图弹窗打开，判断是哪个表单
+                            const title = document.getElementById('generateModalTitle').textContent;
+                            if (title.includes('文字生图')) {
+                                type = 'text';
+                            } else if (title.includes('参考图生图')) {
+                                // 在参考图生图模式下，优先判断基础图片区域
+                                const basePreview = document.getElementById('baseImagePreview');
+                                const refPreview = document.getElementById('refImagePreview');
+
+                                if (basePreview && basePreview.classList.contains('active')) {
+                                    type = 'ref'; // 基础图已有，粘贴到参考图
+                                } else {
+                                    type = 'base'; // 基础图没有，粘贴到基础图
+                                }
+                            }
+                        }
+                    }
+
+                    if (type) {
+                        handleImageFile(blob, type);
+                        e.preventDefault();
+                    }
+                    break;
+                }
+            }
+        }
+
+        // 文字生图
+        async function generateFromText() {
+            const model = document.getElementById('textModelSelect').value;
+            const prompt = document.getElementById('textPrompt').value.trim();
+            const count = parseInt(document.getElementById('textCount').value);
+
+            if (!prompt) {
+                alert('请输入话术描述');
+                return;
+            }
+
+            const taskId = generateTaskId();
+            const task = {
+                id: taskId,
+                type: 'textToImage',
+                model: AI_MODELS[model].name,
+                modelCode: model,
+                prompt: prompt,
+                count: count,
+                referenceImage: textImageData,
+                baseImage: null,
+                refStyleImage: null,
+                status: 'pending',
+                results: [],
+                createdAt: getCurrentTime(),
+                updatedAt: getCurrentTime()
+            };
+
+            tasks.unshift(task);
+            saveData();
+            renderTaskList();
+            closeGenerateModal();
+
+            try {
+                // 调用API
+                const response = await callAI_API(model, prompt, textImageData, null, null, count);
+                
+                // 更新任务状态
+                task.status = 'completed';
+                task.results = response.images || [];
+                task.updatedAt = getCurrentTime();
+                task.errorMessage = '';
+                
+                saveData();
+                renderTaskList();
+                
+                alert('图片生成成功！');
+                openTaskDetail(taskId);
+
+            } catch (error) {
+                // 更新任务状态为失败
+                task.status = 'failed';
+                task.errorMessage = error.message;
+                task.updatedAt = getCurrentTime();
+                
+                saveData();
+                renderTaskList();
+                
+                alert(`生成失败: ${error.message}`);
+            }
+        }
+
+        // 参考图生图
+        async function generateFromImage() {
+            const model = document.getElementById('imageModelSelect').value;
+            const prompt = document.getElementById('imagePrompt').value.trim();
+            const count = parseInt(document.getElementById('imageCount').value);
+
+            if (!baseImageData) {
+                alert('请上传基础图片');
+                return;
+            }
+
+            if (!referenceImageData) {
+                alert('请上传参考风格图');
+                return;
+            }
+
+            const taskId = generateTaskId();
+            const task = {
+                id: taskId,
+                type: 'imageToImage',
+                model: AI_MODELS[model].name,
+                modelCode: model,
+                prompt: prompt || '基于参考风格生成',
+                count: count,
+                referenceImage: null,
+                baseImage: baseImageData,
+                refStyleImage: referenceImageData,
+                status: 'pending',
+                results: [],
+                createdAt: getCurrentTime(),
+                updatedAt: getCurrentTime()
+            };
+
+            tasks.unshift(task);
+            saveData();
+            renderTaskList();
+            closeGenerateModal();
+
+            try {
+                // 调用API
+                const response = await callAI_API(model, prompt, null, baseImageData, referenceImageData, count);
+                
+                // 更新任务状态
+                task.status = 'completed';
+                task.results = response.images || [];
+                task.updatedAt = getCurrentTime();
+                task.errorMessage = '';
+                
+                saveData();
+                renderTaskList();
+                
+                alert('图片生成成功！');
+                openTaskDetail(taskId);
+
+            } catch (error) {
+                // 更新任务状态为失败
+                task.status = 'failed';
+                task.errorMessage = error.message;
+                task.updatedAt = getCurrentTime();
+                
+                saveData();
+                renderTaskList();
+                
+                alert(`生成失败: ${error.message}`);
+            }
+        }
+
+        // 渲染任务列表
+        function renderTaskList() {
+            const container = document.getElementById('taskListContainer');
+            const searchQuery = document.getElementById('searchInput').value.trim().toLowerCase();
+
+            // 过滤任务
+            filteredTasks = tasks.filter(task => 
+                task.id.toLowerCase().includes(searchQuery)
+            );
+
+            // 更新统计
+            updateStats();
+
+            if (filteredTasks.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📋</div>
+                        <p>暂无任务，快去创建您的第一个绘图任务吧！</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = `
+                <div class="task-row-header">
+                    <div>任务ID</div>
+                    <div>状态</div>
+                    <div>模型</div>
+                    <div>提示词</div>
+                    <div>预览</div>
+                    <div>时间</div>
+                    <div>操作</div>
+                </div>
+            `;
+
+            filteredTasks.forEach(task => {
+                const statusClass = task.status === 'completed' ? 'completed' : 
+                                   task.status === 'pending' ? 'pending' : 'failed';
+                const statusText = task.status === 'completed' ? '已完成' : 
+                                  task.status === 'pending' ? '处理中' : '失败';
+
+                // 生成图片预览
+                let imagePreviews = '';
+                if (task.baseImage) {
+                    imagePreviews += `<div class="image-preview" style="background-image: url('${task.baseImage}');" onclick="viewImage('${task.baseImage}'); event.stopPropagation();"></div>`;
+                } else if (task.referenceImage) {
+                    imagePreviews += `<div class="image-preview" style="background-image: url('${task.referenceImage}');" onclick="viewImage('${task.referenceImage}'); event.stopPropagation();"></div>`;
+                } else {
+                    imagePreviews += `<div class="image-preview image-preview-placeholder">📷</div>`;
+                }
+
+                // 结果预览
+                let resultPreviews = '';
+                if (task.results && task.results.length > 0) {
+                    resultPreviews = '<div class="result-preview-container">';
+                    task.results.slice(0, 3).forEach((result, index) => {
+                        resultPreviews += `<div class="result-preview-mini" style="background-image: url('${result}');" onclick="viewImage('${result}'); event.stopPropagation();"></div>`;
+                    });
+                    if (task.results.length > 3) {
+                        resultPreviews += `<div style="font-size: 12px; color: #999;">+${task.results.length - 3}</div>`;
+                    }
+                    resultPreviews += '</div>';
+                } else {
+                    resultPreviews = '<span style="color: #999; font-size: 12px;">暂无结果</span>';
+                }
+
+                html += `
+                    <div class="task-row" onclick="openTaskDetail('${task.id}')">
+                        <div class="task-id">${task.id}</div>
+                        <div><span class="task-status ${statusClass}">${statusText}</span></div>
+                        <div class="task-model">${task.model}</div>
+                        <div class="task-prompt-preview">${task.prompt.substring(0, 50)}...</div>
+                        <div>${resultPreviews}</div>
+                        <div class="task-time">${task.createdAt.split(' ')[1]}</div>
+                        <div class="task-action">查看详情</div>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
+        }
+
+        // 过滤任务
+        function filterTasks() {
+            renderTaskList();
+        }
+
+        // 更新统计数据
+        function updateStats() {
+            const total = filteredTasks.length;
+            const completed = filteredTasks.filter(t => t.status === 'completed').length;
+            const pending = filteredTasks.filter(t => t.status === 'pending').length;
+
+            document.getElementById('totalTasks').textContent = total;
+            document.getElementById('completedTasks').textContent = completed;
+            document.getElementById('pendingTasks').textContent = pending;
+        }
+
+        // 打开任务详情
+        function openTaskDetail(taskId) {
+            const task = tasks.find(t => t.id === taskId);
+            if (!task) return;
+
+            const modal = document.getElementById('taskDetailModal');
+            const title = document.getElementById('modalTitle');
+            const body = document.getElementById('modalBody');
+
+            title.textContent = `${task.id} - 任务详情`;
+
+            const statusClass = task.status === 'completed' ? 'completed' : 
+                               task.status === 'pending' ? 'pending' : 'failed';
+            const statusText = task.status === 'completed' ? '已完成' : 
+                              task.status === 'pending' ? '处理中' : '失败';
+
+            let html = `
+                <div class="detail-section">
+                    <h3>基本信息</h3>
+                    <div class="detail-info-grid">
+                        <div class="detail-info-item">
+                            <div class="detail-info-label">任务ID</div>
+                            <div class="detail-info-value">${task.id}</div>
+                        </div>
+                        <div class="detail-info-item">
+                            <div class="detail-info-label">状态</div>
+                            <div class="detail-info-value"><span class="status-badge ${statusClass}">${statusText}</span></div>
+                        </div>
+                        <div class="detail-info-item">
+                            <div class="detail-info-label">模型</div>
+                            <div class="detail-info-value">${task.model}</div>
+                        </div>
+                        <div class="detail-info-item">
+                            <div class="detail-info-label">创建时间</div>
+                            <div class="detail-info-value">${task.createdAt}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="detail-section">
+                    <h3>提示词</h3>
+                    <div class="detail-info-item" style="padding: 12px;">
+                        <div class="detail-info-value" style="white-space: pre-wrap; word-break: break-word;">${task.prompt}</div>
+                    </div>
+                </div>
+
+                <div class="detail-section">
+                    <h3>输入图片</h3>
+                    <div class="detail-image-grid">
+                        ${task.baseImage ? `
+                            <div class="detail-image-item">
+                                <img src="${task.baseImage}" onclick="viewImage('${task.baseImage}'); event.stopPropagation();">
+                                <div class="detail-image-label">基础图片</div>
+                            </div>
+                        ` : ''}
+                        ${task.referenceImage ? `
+                            <div class="detail-image-item">
+                                <img src="${task.referenceImage}" onclick="viewImage('${task.referenceImage}'); event.stopPropagation();">
+                                <div class="detail-image-label">参考图片</div>
+                            </div>
+                        ` : ''}
+                        ${task.refStyleImage ? `
+                            <div class="detail-image-item">
+                                <img src="${task.refStyleImage}" onclick="viewImage('${task.refStyleImage}'); event.stopPropagation();">
+                                <div class="detail-image-label">风格参考</div>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+
+                <div class="detail-section">
+                    <h3>生成结果</h3>
+                    ${task.results && task.results.length > 0 ? `
+                        <div class="result-grid">
+                            ${task.results.map((result, index) => `
+                                <div class="result-item" onclick="viewImage('${result}')">
+                                    <div class="result-image has-image" style="background-image: url('${result}');">
+                                        <div class="check-mark">✓</div>
+                                    </div>
+                                    <div class="result-prompt">结果 ${index + 1}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : `
+                        <div class="no-results">
+                            ${task.status === 'pending' ? '🔄 任务处理中...' : 
+                              task.status === 'failed' ? `❌ 生成失败: ${task.errorMessage || '未知错误'}` : 
+                              '暂无生成结果'}
+                        </div>
+                    `}
+                </div>
+
+                ${task.status === 'completed' ? `
+                    <div class="edit-area">
+                        <h4>✏️ 重新编辑并提交</h4>
+                        <div class="form-group">
+                            <label>修改提示词</label>
+                            <textarea id="editPrompt">${task.prompt}</textarea>
+                        </div>
+                        <div class="edit-buttons">
+                            <button class="btn" onclick="resubmitTask('${task.id}')">重新生成</button>
+                        </div>
+                    </div>
+                ` : ''}
+            `;
+
+            body.innerHTML = html;
+            modal.classList.add('active');
+        }
+
+        // 关闭任务详情
+        function closeModal() {
+            document.getElementById('taskDetailModal').classList.remove('active');
+        }
+
+        // 查看大图
+        function viewImage(imageUrl) {
+            const modal = document.getElementById('imagePreviewModal');
+            const img = document.getElementById('imagePreviewImg');
+            img.src = imageUrl;
+            modal.classList.add('active');
+        }
+
+        // 关闭大图预览
+        function closeImagePreview() {
+            document.getElementById('imagePreviewModal').classList.remove('active');
+        }
+
+        // 重新提交任务
+        async function resubmitTask(taskId) {
+            const task = tasks.find(t => t.id === taskId);
+            if (!task) return;
+
+            const newPrompt = document.getElementById('editPrompt').value.trim();
+            if (!newPrompt) {
+                alert('请输入提示词');
+                return;
+            }
+
+            const newTaskId = generateTaskId();
+            const newTask = {
+                ...task,
+                id: newTaskId,
+                prompt: newPrompt,
+                status: 'pending',
+                results: [],
+                createdAt: getCurrentTime(),
+                updatedAt: getCurrentTime()
+            };
+
+            tasks.unshift(newTask);
+            saveData();
+            closeModal();
+            renderTaskList();
+
+            try {
+                let response;
+                if (task.type === 'textToImage') {
+                    response = await callAI_API(task.modelCode, newPrompt, task.referenceImage, null, null, task.count);
+                } else {
+                    response = await callAI_API(task.modelCode, newPrompt, null, task.baseImage, task.refStyleImage, task.count);
+                }
+
+                newTask.status = 'completed';
+                newTask.results = response.images || [];
+                newTask.updatedAt = getCurrentTime();
+                
+                saveData();
+                renderTaskList();
+                
+                alert('图片生成成功！');
+                openTaskDetail(newTaskId);
+
+            } catch (error) {
+                newTask.status = 'failed';
+                newTask.errorMessage = error.message;
+                newTask.updatedAt = getCurrentTime();
+                
+                saveData();
+                renderTaskList();
+                
+                alert(`生成失败: ${error.message}`);
+            }
+        }
+    </script>
+</body>
+</html>
