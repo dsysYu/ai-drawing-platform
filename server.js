@@ -560,7 +560,7 @@ async function startServer() {
     await initStorage();
     await initDirectories();
     
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
         console.log(`
 ╔══════════════════════════════════════════════════════════════════════╗
 ║                  🎨 AI绘图任务管理平台后端服务启动成功                    ║
